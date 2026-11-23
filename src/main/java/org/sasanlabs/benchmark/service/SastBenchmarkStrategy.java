@@ -50,25 +50,14 @@ public class SastBenchmarkStrategy implements BenchmarkStrategy {
     public BenchmarkResult compare(ScannerFindings input) throws IOException {
         List<ExpectedIssue> expected = expectedIssuesProvider.getExpectedIssues();
 
-        Map<String, List<ExpectedIssue>> expectedByKey = new HashMap<>();
-        for (ExpectedIssue ei : expected) {
-            for (String key : buildKeys(ei.getFilePath(), ei.getCwe(), ei.getVulnerabilityType())) {
-                expectedByKey.computeIfAbsent(key, k -> new ArrayList<>()).add(ei);
-            }
-        }
+        Map<String, List<ExpectedIssue>> expectedByKey = getExpectedByKey(expected);
 
         List<Finding> rawFindings =
                 (input.getFindings() != null) ? input.getFindings() : new ArrayList<>();
 
         // A finding without a CWE repeats a finding with one that has the same file, line and type,
         // whichever of the two comes first.
-        Set<String> typesOfFindingsWithACwe = new HashSet<>();
-        for (Finding f : rawFindings) {
-            if (isLocated(f) && hasText(f.getCwe()) && hasText(f.getType())) {
-                typesOfFindingsWithACwe.add(
-                        f.getLine() + KEY_SEPARATOR + typeKey(f.getFilePath(), f.getType()));
-            }
-        }
+        Set<String> typesOfFindingsWithACwe = getTypesOfFindingsWithACwe(rawFindings);
 
         // Every finding is matched, so the result does not depend on their order. Findings with
         // the same file, line and CWE, or the same type when they have no CWE, form one group,
@@ -97,36 +86,15 @@ public class SastBenchmarkStrategy implements BenchmarkStrategy {
             }
         }
 
-        List<Finding> unmatchedItems = new ArrayList<>();
-        for (Map.Entry<String, Finding> group : firstFindingOfGroup.entrySet()) {
-            if (!matchedGroups.contains(group.getKey())) {
-                unmatchedItems.add(group.getValue());
-            }
-        }
+        List<Finding> unmatchedItems = getUnmatchedItems(firstFindingOfGroup, matchedGroups);
 
         List<Finding> detectedItems = new ArrayList<>();
         List<Finding> missedItems = new ArrayList<>();
-        Set<ExpectedIssue> listedAsDetected = new HashSet<>();
-        for (ExpectedIssue ei : expected) {
-            if (!detectedSet.contains(ei)) {
-                missedItems.add(toFinding(ei));
-            } else if (listedAsDetected.add(ei)) {
-                // Listed once, as detected counts it once
-                detectedItems.add(toFinding(ei));
-            }
-        }
+        sortListedAsDetected(expected, detectedSet, detectedItems, missedItems);
 
         int totalExpected = expected.size();
         int detected = detectedSet.size();
-        double coverage;
-        if (totalExpected == 0) {
-            LOGGER.warn(
-                    "SAST ground truth is empty; coverage cannot be computed and will be reported"
-                            + " as 0.0");
-            coverage = 0.0;
-        } else {
-            coverage = detected * 100.0 / totalExpected;
-        }
+        double coverage = getCoverage(totalExpected, detected);
 
         return new BenchmarkResult(
                 input.getTool(),
@@ -138,6 +106,67 @@ public class SastBenchmarkStrategy implements BenchmarkStrategy {
                 detectedItems,
                 missedItems,
                 unmatchedItems);
+    }
+
+    private static Set<String> getTypesOfFindingsWithACwe(List<Finding> rawFindings) {
+        Set<String> typesOfFindingsWithACwe = new HashSet<>();
+        for (Finding f : rawFindings) {
+            if (isLocated(f) && hasText(f.getCwe()) && hasText(f.getType())) {
+                typesOfFindingsWithACwe.add(
+                        f.getLine() + KEY_SEPARATOR + typeKey(f.getFilePath(), f.getType()));
+            }
+        }
+        return typesOfFindingsWithACwe;
+    }
+
+    private static Map<String, List<ExpectedIssue>> getExpectedByKey(List<ExpectedIssue> expected) {
+        Map<String, List<ExpectedIssue>> expectedByKey = new HashMap<>();
+        for (ExpectedIssue ei : expected) {
+            for (String key : buildKeys(ei.getFilePath(), ei.getCwe(), ei.getVulnerabilityType())) {
+                expectedByKey.computeIfAbsent(key, k -> new ArrayList<>()).add(ei);
+            }
+        }
+        return expectedByKey;
+    }
+
+    private static List<Finding> getUnmatchedItems(
+            Map<String, Finding> firstFindingOfGroup, Set<String> matchedGroups) {
+        List<Finding> unmatchedItems = new ArrayList<>();
+        for (Map.Entry<String, Finding> group : firstFindingOfGroup.entrySet()) {
+            if (!matchedGroups.contains(group.getKey())) {
+                unmatchedItems.add(group.getValue());
+            }
+        }
+        return unmatchedItems;
+    }
+
+    private static void sortListedAsDetected(
+            List<ExpectedIssue> expected,
+            Set<ExpectedIssue> detectedSet,
+            List<Finding> detectedItems,
+            List<Finding> missedItems) {
+        Set<ExpectedIssue> listedAsDetected = new HashSet<>();
+        for (ExpectedIssue ei : expected) {
+            if (!detectedSet.contains(ei)) {
+                missedItems.add(toFinding(ei));
+            } else if (listedAsDetected.add(ei)) {
+                // Listed once, as detected counts it once
+                detectedItems.add(toFinding(ei));
+            }
+        }
+    }
+
+    private static double getCoverage(int totalExpected, int detected) {
+        double coverage;
+        if (totalExpected == 0) {
+            LOGGER.warn(
+                    "SAST ground truth is empty; coverage cannot be computed and will be reported"
+                            + " as 0.0");
+            coverage = 0.0;
+        } else {
+            coverage = detected * 100.0 / totalExpected;
+        }
+        return coverage;
     }
 
     /**
