@@ -111,7 +111,9 @@ public class SastBenchmarkStrategy implements BenchmarkStrategy {
     private static Set<String> getTypesOfFindingsWithACwe(List<Finding> rawFindings) {
         Set<String> typesOfFindingsWithACwe = new HashSet<>();
         for (Finding f : rawFindings) {
-            if (isLocated(f) && hasText(f.getCwe()) && hasText(f.getType())) {
+            boolean hasLocationCweAndType =
+                    isLocated(f) && hasText(f.getCwe()) && hasText(f.getType());
+            if (hasLocationCweAndType) {
                 typesOfFindingsWithACwe.add(
                         f.getLine() + KEY_SEPARATOR + typeKey(f.getFilePath(), f.getType()));
             }
