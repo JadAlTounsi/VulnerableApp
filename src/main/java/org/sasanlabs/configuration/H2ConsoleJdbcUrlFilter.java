@@ -53,13 +53,20 @@ public class H2ConsoleJdbcUrlFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String url = request.getParameter("url");
         String driver = request.getParameter("driver");
-        if ((url != null && !allowedUrl.equals(url.trim()))
-                || (driver != null && !driver.isBlank() && !H2_DRIVER.equals(driver.trim()))) {
+        if (isDisallowedUrl(url) || isDisallowedDriver(driver)) {
             response.sendError(
                     HttpServletResponse.SC_FORBIDDEN,
                     "Only " + allowedUrl + " with " + H2_DRIVER + " is allowed");
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isDisallowedUrl(String url) {
+        return url != null && !allowedUrl.equals(url.trim());
+    }
+
+    private boolean isDisallowedDriver(String driver) {
+        return driver != null && !driver.isBlank() && !H2_DRIVER.equals(driver.trim());
     }
 }
